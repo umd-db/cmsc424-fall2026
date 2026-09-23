@@ -1,6 +1,6 @@
 ## Project 2: Advanced SQL Assignment, CMSC424, Fall 2026
 
-### Due Date: Monday, Sep 30, 2026, 11:59pm.
+### Due Date: TBD, 2026, 11:59pm.
 
 *The assignment is to be done by yourself.*
 
