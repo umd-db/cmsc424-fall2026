@@ -54,7 +54,7 @@ This will run `testFromBytes` in the `TestBPlusNode` class.
 
 As the start of the project, `mvn test` will give out a bunch of error messages. This is normal behavior. You should be able to find a line of output that says something along the lines of
 
-> Tests run: 42, Failures: 0, Errors: 40, Skipped: 0
+> Tests run: 27, Failures: 0, Errors: 25, Skipped: 0
 
 Most tests failed because you have not yet implemented the functions they are testing. However, a few tests will pass out of the box.
 
@@ -205,27 +205,7 @@ All tests in `TestBPlusNode`, `TestInnerNode`, and `TestLeafNode` should pass at
 ### B+ Tree Functions
 Implement the `get`, `put`, `remove`, and `bulkLoad` methods of `BPlusTree`. 
 
-All tests except those prefixed by `testIterator` should pass at this point.
-
-### Iterators
-
-Before starting this section, make sure you know what Java iterators are. You have already used them when implementing bulk load and might have seen similar features in other languages, such as C++ iterators, Haskell's lazy evaluation, and python iterables/generators.
-
-Your task is to implement the `BPlusTreeIterator` inner class inside the `BPlusTree` class. There is already a simple yet flawed implementation, which you can use as a reference.
-
-Assuming you have passed all previous tests, the existing `BPlusTreeIterator` should be able to let you pass `testIterator_simple`. However, the `testIterator_noHasNext` test will fail. Try to understand the existing iterator implementation and why it is wrong. You do not have to write the reason down, but keep it in mind as you proceed with your implementation.
-
-You will now replace the existing iterator with a much more powerful one. In addition to iterating through the whole tree, it should also support
-1. A lower bound and upper bound (inclusive) on the key value. Only records whose key is within this range should be returned by the iterator.
-2. A limit on the total number of records that should be returned. If the total number of records exceeds this limit, only return the ones with the lowest keys. This corresponds to the `LIMIT` clause in SQL.
-3. A custom function which takes a `DataBox` object and returns a `Boolean`. Treat this function as a blackbox: if the function returns `true`, your iterator should return the corresponding record; otherwise, the iterator rejects this record and moves on to the next one. For real-life inspirations, think of queries such as "find all students whose UID ends with a 3", which is too complicated and too specific to have a rule designed specifically for it. If you can still remember CMSC 330 content, this is similar with the function you pass to `filter`.
-
-With these in mind, now implement `hasNext`, `next`, and the constructor `BPlusTreeIterator` (there are 3 constructors with different function signatures) in `BPlusTreeIterator`. Two of the three `BPlusTreeIterator` constructors implement a subset of the features of the third one, which is also the most powerful. You are recommended to use [explicit constructor invocation](https://docs.oracle.com/javase/tutorial/java/javaOO/thiskey.html) so that you only need to implement one method.
-
-All tests should pass upon successful completion of the iterator.
-
-> [!NOTE]
-> An inefficient implementation may pass all tests on your own machine (which is usually pretty fast) but get rejected by the autograder (which is pretty slow). If that happens, you are welcome to read the source code of the tests to determine the cause.
+All tests should pass at this point.
 
 ## Things to Note
 

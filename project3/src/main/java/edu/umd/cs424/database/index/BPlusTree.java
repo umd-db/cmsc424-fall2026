@@ -5,14 +5,12 @@ import java.io.IOException;
 import java.io.FileWriter;
 import java.io.File;
 import java.util.*;
-import java.util.function.Function;
 
 import edu.umd.cs424.database.BaseTransaction;
 import edu.umd.cs424.database.common.Buffer;
 import edu.umd.cs424.database.common.Pair;
 import edu.umd.cs424.database.concurrency.LockContext;
 import edu.umd.cs424.database.databox.DataBox;
-import edu.umd.cs424.database.databox.IntDataBox;
 import edu.umd.cs424.database.databox.Type;
 import edu.umd.cs424.database.io.Page;
 import edu.umd.cs424.database.io.PageAllocator;
@@ -201,14 +199,10 @@ public class BPlusTree implements Closeable {
 	 * iter.next(); // RecordId(4, 4)
 	 * iter.next(); // RecordId(5, 5)
 	 * iter.next(); // NoSuchElementException
-	 *
-	 * Note that you CAN NOT materialize all record ids in memory and then return an
-	 * iterator over them. Your iterator must lazily scan over the leaves of the B+
-	 * tree. Solutions that materialize all record ids in memory will receive 0
-	 * points.
 	 */
 	public Iterator<RecordId> scanAll(BaseTransaction transaction) {
-		return new BPlusTreeIterator(transaction);
+		LeafNode leaf = root.getLeftmostLeaf(transaction);
+		return new BPlusTreeIterator(transaction, leaf, leaf.scanAll());
 	}
 
 	/**
@@ -229,28 +223,17 @@ public class BPlusTree implements Closeable {
 	 * iter.next(); // RecordId(4, 4)
 	 * iter.next(); // RecordId(5, 5)
 	 * iter.next(); // NoSuchElementException
-	 *
-	 * Note that you CAN NOT materialize all record ids in memory and then return an
-	 * iterator over them. Your iterator must lazily scan over the leaves of the B+
-	 * tree. Solutions that materialize all record ids in memory will receive 0
-	 * points.
 	 */
 	public Iterator<RecordId> scanGreaterEqual(BaseTransaction transaction, DataBox key) {
 		typecheck(key);
-		return new BPlusTreeIterator(transaction, key, new IntDataBox(Integer.MAX_VALUE));
-	}
-
-	public Iterator<RecordId> scanEnhanced(BaseTransaction transaction, DataBox lowerBound, DataBox upperBound) {
-		typecheck(lowerBound);
-		typecheck(upperBound);
-		return new BPlusTreeIterator(transaction, lowerBound, upperBound);
-	}
-
-	public Iterator<RecordId> scanEnhanced(BaseTransaction transaction, DataBox lowerBound, DataBox upperBound,
-										   int limit, Function<DataBox, Boolean> filter) {
-		typecheck(lowerBound);
-		typecheck(upperBound);
-		return new BPlusTreeIterator(transaction, lowerBound, upperBound, limit, filter);
+		LeafNode leaf = root.get(transaction, key);
+		// Skip the record ids in the leaf whose keys are less than `key`.
+		Iterator<DataBox> keys = leaf.scanKeys();
+		Iterator<RecordId> rids = leaf.scanAll();
+		while (keys.hasNext() && keys.next().compareTo(key) < 0) {
+			rids.next();
+		}
+		return new BPlusTreeIterator(transaction, leaf, rids);
 	}
 
 	/**
@@ -395,106 +378,48 @@ public class BPlusTree implements Closeable {
 	}
 
 	// Iterator ////////////////////////////////////////////////////////////////
+	/**
+	 * Iterates over the record ids stored in the leaves of the B+ tree, in
+	 * ascending order of their keys, starting from a given leaf and a given
+	 * position within it. This class is provided for you; it does not need to be
+	 * modified.
+	 */
 	private class BPlusTreeIterator implements Iterator<RecordId> {
-		// these are instance variables used by the existing iterator implementation
-		// you are welcome to add/change/remove instance variables in this class as you see fit
+		private final BaseTransaction transaction;
 		private LeafNode curNode;
 		private Iterator<RecordId> curIterator;
 
 		/**
-		 * This constructor simply creates an iterator that
-		 * iterates through every record in the tree in ascending or of the keys.
-		 * <p>
-		 * The existing code is flawed, but serves as a good example on iterators are implemented.
-		 * <p>
-		 * For your implementation, you are recommended to use explicit constructor invocation so that
-		 * you do not have to implement this method.
-		 *
 		 * @param transaction Ignore this parameter. It has nothing to do with project 3.
+		 * @param start       The leaf to start iterating from.
+		 * @param startIterator An iterator over the record ids of `start` that remain to be returned.
 		 */
-		public BPlusTreeIterator(BaseTransaction transaction) {
-			this.curNode = root.getLeftmostLeaf(transaction);
-			this.curIterator = curNode.scanAll();
+		BPlusTreeIterator(BaseTransaction transaction, LeafNode start, Iterator<RecordId> startIterator) {
+			this.transaction = transaction;
+			this.curNode = start;
+			this.curIterator = startIterator;
 		}
 
-		/**
-		 * This constructor creates an iterator that iterates through every record in the tree
-		 * whose key is greater than or equal to lowerBound and less than or equal to upperBound.
-		 * <p>
-		 * For example, let the following be the key/record pairs in the tree:
-		 * (1, 555), (2, 1), (3, 2432), (5, 21), (7, 1298)
-		 * If lowerBound.getInt() is 3 and upperBound.getInt() is 6, then the iterator should return
-		 * 2432 and 21 in order.
-		 * <p>
-		 * For your implementation, you are recommended to use explicit constructor invocation so that
-		 * you do not have to implement this method.
-		 *
-		 * @param transaction Ignore this parameter. It has nothing to do with project 3.
-		 * @param lowerBound Lower bound (inclusive) on the keys whose record will be returned by the iterator.
-		 * @param upperBound Upper bound (inclusive) on the keys whose record will be returned by the iterator.
-		 */
-		public BPlusTreeIterator(BaseTransaction transaction,
-								 DataBox lowerBound, DataBox upperBound) {
-			throw new UnsupportedOperationException("Implement this.");
-		}
-
-		/**
-		 * This constructor is similar with the previous one but has more criteria. The added limit parameter should
-		 * be fairly easy to understand. For the filter parameter, suppose <code>box</code> is a <code>DataBox</code>
-		 * object, then you can use <code>filter.apply(box)</code> to check if this key passes the filter. If it does,
-		 * return it when <code>next</code> is called, otherwise ignore it.
-		 * <p>
-		 * Since this is the most powerful/flexible constructor among all 3, you are recommended to let
-		 * other constructors call this constructor through explicit constructor invocation
-		 * and put all your implementation here.
-		 *
-		 * @param transaction Ignore this parameter. It has nothing to do with project 3.
-		 * @param lowerBound Lower bound (inclusive) on the keys whose record will be returned by the iterator.
-		 * @param upperBound Upper bound (inclusive) on the keys whose record will be returned by the iterator.
-		 * @param limit The maximum number of elements the iterator can return. For example, suppose limit is 5 but
-		 *              there are 10 records available, then only the first 5 records should be returned
-		 *              by the generator.
-		 * @param filter A function which takes a DataBox as input and returns a Boolean. It determines, by performing
-		 *               some check on the key, whether a record should be included in the result of the iterator.
-		 */
-		public BPlusTreeIterator(BaseTransaction transaction,
-								 DataBox lowerBound, DataBox upperBound, int limit,
-								 Function<DataBox, Boolean> filter) {
-			throw new UnsupportedOperationException("Implement this.");
-		}
-
-		/**
-		 * Checks whether there are more elements the iterator can return.
-		 *
-		 * @return True if calling hasNext will yield the next element. False if there are no more elements available.
-		 */
 		@Override
 		public boolean hasNext() {
-			if (curIterator.hasNext()) {
-				return true;
-			} else {
-				// Because there might be empty leaves we need to loop through until we find a
-				// non-empty one
-				while (curNode.getRightSibling(null).isPresent() && !curIterator.hasNext()) {
-					curNode = curNode.getRightSibling(null).get();
-					curIterator = curNode.scanAll();
+			// A leaf may have no record ids left to return, so keep following the
+			// right sibling pointers until we find one that does or run out of leaves.
+			while (!curIterator.hasNext()) {
+				Optional<LeafNode> next = curNode.getRightSibling(transaction);
+				if (next.isEmpty()) {
+					return false;
 				}
-				// Either we found a non-empty one or we're at the end
-				return curIterator.hasNext();
+				curNode = next.get();
+				curIterator = curNode.scanAll();
 			}
+			return true;
 		}
 
-		/**
-		 * Look for the next available record in the BTree and return it. The returned record should have
-		 * the lowest key among all possible records that can be returned. In other words, the iterator should
-		 * go through the key/record pairs in the tree in ascending order of the key, matching the order in which
-		 * the BPlusTree stores them.
-		 *
-		 * @return The next record.
-		 * @throws NoSuchElementException When no more elements are available.
-		 */
 		@Override
 		public RecordId next() {
+			if (!hasNext()) {
+				throw new NoSuchElementException();
+			}
 			return curIterator.next();
 		}
 	}
