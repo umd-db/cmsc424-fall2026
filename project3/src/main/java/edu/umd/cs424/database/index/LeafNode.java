@@ -11,11 +11,11 @@ import edu.umd.cs424.database.io.Page;
 import edu.umd.cs424.database.table.RecordId;
 
 /**
- * A leaf of a B+ tree. Every leaf in a B+ tree of order d stores between d and
- * 2d (key, record id) pairs and a pointer to its right sibling (i.e. the page
+ * A leaf of a B+ tree. Every non-root leaf in a B+ tree of order n stores between
+ * ceil((n-1)/2) and n-1 (key, record id) pairs and a pointer to its right sibling (i.e. the page
  * number of its right sibling). Moreover, every leaf node is serialized and
  * persisted on a single page; see toBytes and fromBytes for details on how a
- * leaf is serialized. For example, here is an illustration of two order 2
+ * leaf is serialized. For example, here is an illustration of two order 5
  * leafs connected together:
  *
  *   leaf 1 (stored on some page)          leaf 2 (stored on some other page)
@@ -156,7 +156,7 @@ class LeafNode extends BPlusNode {
 
     // See BPlusNode.remove.
     @Override
-    public void remove(BaseTransaction transaction, DataBox key) {
+    public boolean remove(BaseTransaction transaction, DataBox key) {
         throw new UnsupportedOperationException("Implement this.");
     }
 
@@ -194,8 +194,8 @@ class LeafNode extends BPlusNode {
     }
 
     /**
-     * Returns the largest number d such that the serialization of a LeafNode
-     * with 2d entries will fit on a single page of size `pageSizeInBytes`.
+     * Returns the largest order n such that the serialization of a LeafNode
+     * with n-1 entries will fit on a single page of size `pageSizeInBytes`.
      */
     public static int maxOrder(int pageSizeInBytes, Type keySchema) {
         // A leaf node with k entries takes up the following number of bytes:
@@ -219,11 +219,11 @@ class LeafNode extends BPlusNode {
         //
         //   k = (pageSizeInBytes - 9) / (keySize + ridSize)
         //
-        // The order d is half of k.
+        // The order n is one more than the number of entries k.
         int keySize = keySchema.getSizeInBytes();
         int ridSize = RecordId.getSizeInBytes();
         int k = (pageSizeInBytes - 9) / (keySize + ridSize);
-        return k / 2;
+        return k + 1;
     }
 
     // For testing only.

@@ -12,12 +12,13 @@ import edu.umd.cs424.database.io.Page;
 import edu.umd.cs424.database.table.RecordId;
 
 /**
- * A inner node of a B+ tree. Every inner node in a B+ tree of order d stores
- * between d and 2d keys. An inner node with k keys stores k + 1 "pointers" to
+ * A inner node of a B+ tree. Every non-root inner node in a B+ tree of order n
+ * stores between ceil(n/2) and n "pointers" to children nodes, i.e. between
+ * ceil(n/2) - 1 and n - 1 keys. An inner node with k keys stores k + 1 "pointers" to
  * children nodes (where a pointer is just a page number). Moreover, every
  * inner node is serialized and persisted on a single page; see toBytes and
  * fromBytes for details on how an inner node is serialized. For example, here
- * is an illustration of an order 2 inner node:
+ * is an illustration of an order 5 inner node:
  * <p>
  *     +----+----+----+----+
  *     | 10 | 20 | 30 |    |
@@ -54,7 +55,7 @@ class InnerNode extends BPlusNode {
      */
     private InnerNode(BPlusTreeMetadata metadata, int pageNum, List<DataBox> keys,
                       List<Integer> children, BaseTransaction transaction) {
-        assert(keys.size() <= 2 * metadata.getOrder());
+        assert(keys.size() <= metadata.getOrder() - 1);
         assert(keys.size() + 1 == children.size());
 
         this.metadata = metadata;
@@ -93,7 +94,7 @@ class InnerNode extends BPlusNode {
 
     // See BPlusNode.remove.
     @Override
-    public void remove(BaseTransaction transaction, DataBox key) {
+    public boolean remove(BaseTransaction transaction, DataBox key) {
         throw new UnsupportedOperationException("Implement this.");
     }
 
@@ -119,8 +120,8 @@ class InnerNode extends BPlusNode {
     }
 
     /**
-     * Returns the largest number d such that the serialization of an InnerNode
-     * with 2d keys will fit on a single page of size `pageSizeInBytes`.
+     * Returns the largest order n such that the serialization of an InnerNode
+     * with n-1 keys will fit on a single page of size `pageSizeInBytes`.
      */
     public static int maxOrder(int pageSizeInBytes, Type keySchema) {
         // A leaf node with k entries takes up the following number of bytes:
@@ -143,10 +144,10 @@ class InnerNode extends BPlusNode {
         //
         //   k = (pageSizeInBytes - 9) / (keySize + 4)
         //
-        // The order d is half of k.
+        // The order n is one more than the number of keys k.
         int keySize = keySchema.getSizeInBytes();
         int k = (pageSizeInBytes - 9) / (keySize + 4);
-        return k / 2;
+        return k + 1;
     }
 
     // Pretty Printing ///////////////////////////////////////////////////////////

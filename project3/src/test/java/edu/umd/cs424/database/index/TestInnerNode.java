@@ -15,6 +15,7 @@ import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
 
 import edu.umd.cs424.database.common.Buffer;
+import edu.umd.cs424.database.common.Pair;
 import edu.umd.cs424.database.databox.DataBox;
 import edu.umd.cs424.database.databox.IntDataBox;
 import edu.umd.cs424.database.databox.Type;
@@ -22,6 +23,8 @@ import edu.umd.cs424.database.io.PageAllocator;
 import edu.umd.cs424.database.table.RecordId;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 @Timeout(1)
@@ -100,7 +103,7 @@ public class TestInnerNode {
         Path file = Files.createFile(tempFolder.resolve(testFile));
         this.allocator = new PageAllocator(file.toAbsolutePath().toString(), false, null);
 
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), 2);
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), 5);
 
         // Leaf 2
         var keys2 = new ArrayList<DataBox>();
@@ -166,7 +169,7 @@ public class TestInnerNode {
 
     // See comment above.
     private LeafNode getLeaf(int pageNum) throws IOException {
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), 2);
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), 5);
         return LeafNode.fromBytes(null, meta, pageNum);
     }
 
@@ -245,55 +248,215 @@ public class TestInnerNode {
         checkTreeMatchesExpectations();
     }
 
+    // Creates a leaf holding `keys` (each with record id (k, k)) whose right
+    // sibling is `rightSibling`, and returns its page number.
+    private int makeLeaf(BPlusTreeMetadata meta, Optional<Integer> rightSibling, int... keys) {
+        var leafKeys = new ArrayList<DataBox>();
+        var leafRids = new ArrayList<RecordId>();
+        for (int k : keys) {
+            leafKeys.add(new IntDataBox(k));
+            leafRids.add(new RecordId(k, (short) k));
+        }
+        return new LeafNode(meta, leafKeys, leafRids, rightSibling, null).getPage().getPageNum();
+    }
+
+    private static String leafSexp(int... keys) {
+        var ss = new ArrayList<String>();
+        for (int k : keys) {
+            ss.add(String.format("(%d (%d %d))", k, k, k));
+        }
+        return String.format("(%s)", String.join(" ", ss));
+    }
+
     @Test
-    public void testRemove() throws IOException {
-        // Remove from leaf 0.
-        inner.remove(null, new IntDataBox(1));
-        keys0.remove(0);
-        rids0.remove(0);
-        checkTreeMatchesExpectations();
+    public void testPut_lectureSlidesExample() throws BPlusTreeException, IOException {
+        // The n = 4 example from the lecture slides ("Another Example: INSERT
+        // (125)"). A node holds at most 3 keys. The slides do not show the
+        // subtrees under 1000, 2000, and 3000, so single leaves stand in for
+        // them here.
+        //
+        //                                  (1000 2000 3000)
+        //                                 /     |     |    \
+        //                  (100 200 300)     (1000) (2000) (3000)
+        //                 /    |    |    \
+        //   (10 20 30) (100 130 150) (200 230 240) (300 330 350)
+        //              L
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), 4);
+        int s3000 = makeLeaf(meta, Optional.empty(), 3000);
+        int s2000 = makeLeaf(meta, Optional.of(s3000), 2000);
+        int s1000 = makeLeaf(meta, Optional.of(s2000), 1000);
+        int l3 = makeLeaf(meta, Optional.of(s1000), 300, 330, 350);
+        int l2 = makeLeaf(meta, Optional.of(l3), 200, 230, 240);
+        int l1 = makeLeaf(meta, Optional.of(l2), 100, 130, 150);
+        int l0 = makeLeaf(meta, Optional.of(l1), 10, 20, 30);
+        var p = new InnerNode(meta,
+                new ArrayList<>(Arrays.asList(new IntDataBox(100), new IntDataBox(200), new IntDataBox(300))),
+                new ArrayList<>(Arrays.asList(l0, l1, l2, l3)), null);
+        var root = new InnerNode(meta,
+                new ArrayList<>(Arrays.asList(new IntDataBox(1000), new IntDataBox(2000), new IntDataBox(3000))),
+                new ArrayList<>(Arrays.asList(p.getPage().getPageNum(), s1000, s2000, s3000)), null);
 
-        inner.remove(null, new IntDataBox(3));
-        keys0.remove(1);
-        rids0.remove(1);
-        checkTreeMatchesExpectations();
+        // Step 1: L overflows to (100 125 130 150) and keeps ceil(4/2) = 2 keys,
+        // so L = (100 125) and L' = (130 150); 130 goes up into P.
+        // Steps 2-3: P overflows to (100 130 200 300) and keeps ceil(5/2) = 3
+        // pointers, so P = (100 130) and P' = (300); 200 goes up into the root.
+        // Steps 4-5: the root overflows to (200 1000 2000 3000) and keeps 3
+        // pointers, so it becomes (200 1000) with a new right sibling (3000);
+        // 2000 goes up and becomes the key of the new root.
+        Optional<Pair<DataBox, Integer>> split = root.put(null, new IntDataBox(125), new RecordId(125, (short) 125));
+        assertEquals(Optional.of(new IntDataBox(2000)), split.map(Pair::getFirst));
 
-        inner.remove(null, new IntDataBox(2));
-        keys0.remove(0);
-        rids0.remove(0);
-        checkTreeMatchesExpectations();
+        String pSexp = String.format("(%s 100 %s 130 %s)",
+                leafSexp(10, 20, 30), leafSexp(100, 125), leafSexp(130, 150));
+        String pPrimeSexp = String.format("(%s 300 %s)", leafSexp(200, 230, 240), leafSexp(300, 330, 350));
+        String left = String.format("(%s 200 %s 1000 %s)", pSexp, pPrimeSexp, leafSexp(1000));
+        String right = String.format("(%s 3000 %s)", leafSexp(2000), leafSexp(3000));
+        assertEquals(left, InnerNode.fromBytes(null, meta, root.getPage().getPageNum()).toSexp(null));
+        assertEquals(right, InnerNode.fromBytes(null, meta, split.get().getSecond()).toSexp(null));
 
-        // Remove from leaf 1.
-        inner.remove(null, new IntDataBox(11));
-        keys1.remove(0);
-        rids1.remove(0);
-        checkTreeMatchesExpectations();
+        // The leaves are still linked in key order.
+        var leaf = LeafNode.fromBytes(null, meta, l0);
+        var scanned = new ArrayList<DataBox>();
+        while (true) {
+            leaf.scanKeys().forEachRemaining(scanned::add);
+            Optional<LeafNode> next = leaf.getRightSibling(null);
+            if (next.isEmpty()) {
+                break;
+            }
+            leaf = next.get();
+        }
+        var expected = new ArrayList<DataBox>();
+        for (int k : new int[] {10, 20, 30, 100, 125, 130, 150, 200, 230, 240, 300, 330, 350, 1000, 2000, 3000}) {
+            expected.add(new IntDataBox(k));
+        }
+        assertEquals(expected, scanned);
+    }
 
-        inner.remove(null, new IntDataBox(13));
-        keys1.remove(1);
-        rids1.remove(1);
-        checkTreeMatchesExpectations();
+    @Test
+    public void testRemove() throws BPlusTreeException, IOException {
+        // A leaf needs at least ceil(4/2) = 2 keys, and a non-root inner node
+        // needs at least ceil(5/2) = 3 pointers. The first steps follow the
+        // example in BPlusNode.remove.
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), 5);
+        assertEquals(Optional.empty(), inner.put(null, new IntDataBox(14), new RecordId(14, (short) 14)));
+        assertFalse(inner.remove(null, new IntDataBox(3)));
+        assertEquals(String.format("(%s 10 %s 20 %s)",
+                leafSexp(1, 2), leafSexp(11, 12, 13, 14), leafSexp(21, 22, 23)), inner.toSexp(null));
 
-        inner.remove(null, new IntDataBox(12));
-        keys1.remove(0);
-        rids1.remove(0);
-        checkTreeMatchesExpectations();
+        // leaf0 is left with (2), which is too few. It is the first child, so
+        // it uses the next child leaf1. 1 + 4 keys do not fit in one leaf, so
+        // leaf0 borrows the first key of leaf1, and 10 is replaced by the new
+        // first key of leaf1.
+        assertFalse(inner.remove(null, new IntDataBox(1)));
+        assertEquals(String.format("(%s 12 %s 20 %s)",
+                leafSexp(2, 11), leafSexp(12, 13, 14), leafSexp(21, 22, 23)), inner.toSexp(null));
 
-        // Remove from leaf 2.
-        inner.remove(null, new IntDataBox(23));
-        keys2.remove(2);
-        rids2.remove(2);
-        checkTreeMatchesExpectations();
+        // leaf2 is left with (23), so it uses the previous child leaf1. 4 + 1
+        // keys do not fit in one leaf, so leaf2 borrows the last key of leaf1,
+        // which replaces 20.
+        assertEquals(Optional.empty(), inner.put(null, new IntDataBox(15), new RecordId(15, (short) 15)));
+        assertFalse(inner.remove(null, new IntDataBox(21)));
+        assertFalse(inner.remove(null, new IntDataBox(22)));
+        assertEquals(String.format("(%s 12 %s 15 %s)",
+                leafSexp(2, 11), leafSexp(12, 13, 14), leafSexp(15, 23)), inner.toSexp(null));
 
-        inner.remove(null, new IntDataBox(22));
-        keys2.remove(1);
-        rids2.remove(1);
-        checkTreeMatchesExpectations();
+        // Removing 12 leaves 2 keys in leaf1, which is enough. The key 12 in
+        // inner stays.
+        assertFalse(inner.remove(null, new IntDataBox(12)));
+        assertEquals(String.format("(%s 12 %s 15 %s)",
+                leafSexp(2, 11), leafSexp(13, 14), leafSexp(15, 23)), inner.toSexp(null));
 
-        inner.remove(null, new IntDataBox(21));
-        keys2.remove(0);
-        rids2.remove(0);
-        checkTreeMatchesExpectations();
+        // leaf2 is left with (15). 2 + 1 keys fit in one leaf, so leaf2 is
+        // merged into leaf1, and inner removes 15 and the pointer to leaf2.
+        // inner is left with 2 pointers, which is too few.
+        assertTrue(inner.remove(null, new IntDataBox(23)));
+        assertEquals(String.format("(%s 12 %s)", leafSexp(2, 11), leafSexp(13, 14, 15)), inner.toSexp(null));
+        assertEquals(Arrays.asList(leaf0, leaf1), inner.getChildren());
+        assertEquals(Arrays.asList(2, 11, 13, 14, 15), leafChainKeys(meta, leaf0));
+
+        // Removing a key that is not in the tree does nothing.
+        assertFalse(inner.remove(null, new IntDataBox(23)));
+        assertEquals(String.format("(%s 12 %s)", leafSexp(2, 11), leafSexp(13, 14, 15)), inner.toSexp(null));
+    }
+
+    // Returns the keys of the leaves reached by following right sibling
+    // pointers from the leaf on page `pageNum`.
+    private List<Integer> leafChainKeys(BPlusTreeMetadata meta, int pageNum) {
+        var keys = new ArrayList<Integer>();
+        Optional<LeafNode> leaf = Optional.of(LeafNode.fromBytes(null, meta, pageNum));
+        while (leaf.isPresent()) {
+            leaf.get().scanKeys().forEachRemaining(k -> keys.add(k.getInt()));
+            leaf = leaf.get().getRightSibling(null);
+        }
+        return keys;
+    }
+
+    // Builds the n = 3 tree from the lecture slides' deletion examples, with
+    // Brighton, Clearview, Downtown, Mianus, Perryridge, Redwood, and Round Hill
+    // written as 10, 20, ..., 70. Returns the root and the first leaf's page
+    // number.
+    //
+    //                      (50)
+    //                    /      \
+    //             (30 40)        (60)
+    //            /   |   \      /    \
+    //     (10 20) (30) (40) (50) (60 70)
+    private Pair<InnerNode, Integer> makeSlidesDeletionTree(BPlusTreeMetadata meta) {
+        int e = makeLeaf(meta, Optional.empty(), 60, 70);
+        int d = makeLeaf(meta, Optional.of(e), 50);
+        int c = makeLeaf(meta, Optional.of(d), 40);
+        int b = makeLeaf(meta, Optional.of(c), 30);
+        int a = makeLeaf(meta, Optional.of(b), 10, 20);
+        var left = new InnerNode(meta,
+                new ArrayList<>(Arrays.asList(new IntDataBox(30), new IntDataBox(40))),
+                new ArrayList<>(Arrays.asList(a, b, c)), null);
+        var right = new InnerNode(meta,
+                new ArrayList<>(Arrays.asList(new IntDataBox(60))),
+                new ArrayList<>(Arrays.asList(d, e)), null);
+        var root = new InnerNode(meta,
+                new ArrayList<>(Arrays.asList(new IntDataBox(50))),
+                new ArrayList<>(Arrays.asList(left.getPage().getPageNum(), right.getPage().getPageNum())), null);
+        return new Pair<>(root, a);
+    }
+
+    @Test
+    public void testRemove_lectureSlidesExample() throws IOException {
+        // The n = 3 deletion examples from the lecture slides. A leaf needs at
+        // least ceil(2/2) = 1 key, and a non-root inner node needs at least
+        // ceil(3/2) = 2 pointers.
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), 3);
+
+        // Deleting "Downtown" (30) empties its leaf, which merges into the
+        // previous leaf (10 20). The parent removes 30 and keeps 2 pointers.
+        Pair<InnerNode, Integer> tree = makeSlidesDeletionTree(meta);
+        InnerNode root = tree.getFirst();
+        assertFalse(root.remove(null, new IntDataBox(30)));
+        assertEquals(String.format("((%s 40 %s) 50 (%s 60 %s))",
+                leafSexp(10, 20), leafSexp(40), leafSexp(50), leafSexp(60, 70)), root.toSexp(null));
+        assertEquals(Arrays.asList(10, 20, 40, 50, 60, 70), leafChainKeys(meta, tree.getSecond()));
+
+        // Then deleting "Perryridge" (50) empties its leaf. It is the first
+        // child, so (60 70) merges into it, and (60) is left with 1 pointer.
+        // The previous inner node (40) has 2 pointers, and 2 + 1 pointers fit
+        // in one node, so the two merge with 50 pulled down between them. The
+        // root is left with 1 pointer, so BPlusTree.remove would make the
+        // merged node the new root.
+        assertTrue(root.remove(null, new IntDataBox(50)));
+        assertEquals(String.format("((%s 40 %s 50 %s))",
+                leafSexp(10, 20), leafSexp(40), leafSexp(60, 70)), root.toSexp(null));
+        assertEquals(Arrays.asList(10, 20, 40, 60, 70), leafChainKeys(meta, tree.getSecond()));
+
+        // Deleting "Perryridge" (50) from the original tree instead: (60) is
+        // again left with 1 pointer, but the previous inner node (30 40) has 3
+        // pointers, and 3 + 1 pointers do not fit in one node. So (60) borrows
+        // the last pointer of (30 40), 50 moves down into (60), and 40 moves up
+        // into the root.
+        tree = makeSlidesDeletionTree(meta);
+        root = tree.getFirst();
+        assertFalse(root.remove(null, new IntDataBox(50)));
+        assertEquals(String.format("((%s 30 %s) 40 (%s 50 %s))",
+                leafSexp(10, 20), leafSexp(30), leafSexp(40), leafSexp(60, 70)), root.toSexp(null));
+        assertEquals(Arrays.asList(10, 20, 30, 40, 60, 70), leafChainKeys(meta, tree.getSecond()));
     }
 
     @Test
@@ -303,10 +466,9 @@ public class TestInnerNode {
         // unless you read toBytes.
         assertEquals(4, Type.intType().getSizeInBytes());
         assertEquals(6, RecordId.getSizeInBytes());
-        for (int d = 0; d < 10; ++d) {
-            int dd = d + 1;
-            for (int i = 5 + (2 * d * 4) + ((2 * d + 1) * 4); i < 5 + (2 * dd * 4) + ((2 * dd + 1) * 4); ++i) {
-                assertEquals(d, InnerNode.maxOrder(i, Type.intType()));
+        for (int n = 1; n < 21; ++n) {
+            for (int i = 5 + ((n - 1) * 4) + (n * 4); i < 5 + (n * 4) + ((n + 1) * 4); ++i) {
+                assertEquals(n, InnerNode.maxOrder(i, Type.intType()));
             }
         }
     }
@@ -374,14 +536,14 @@ public class TestInnerNode {
 
     @Test
     public void testToAndFromBytes() throws IOException {
-        int d = 5;
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), d);
+        int n = 11;
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), n);
 
         var keys = new ArrayList<DataBox>();
         var children = new ArrayList<Integer>();
         children.add(42);
 
-        for (int i = 0; i < 2 * d; ++i) {
+        for (int i = 0; i < n - 1; ++i) {
             keys.add(new IntDataBox(i));
             children.add(i);
 
@@ -394,8 +556,8 @@ public class TestInnerNode {
 
     @Test
     public void testByteSequence() throws IOException {
-        int d = 5;
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), d);
+        int n = 11;
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), n);
 
         // Create keys
         var keys = new ArrayList<DataBox>();

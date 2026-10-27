@@ -35,13 +35,13 @@ public class TestBPlusNode {
 
     @Test
     public void testFromBytes() throws IOException {
-        int d = 5;
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), d);
+        int n = 11;
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), n);
 
         // Leaf node.
         var leafKeys = new ArrayList<DataBox>();
         var leafRids = new ArrayList<RecordId>();
-        for (int i = 0; i < 2 * d; ++i) {
+        for (int i = 0; i < n - 1; ++i) {
             leafKeys.add(new IntDataBox(i));
             leafRids.add(new RecordId(i, (short) i));
         }
@@ -51,7 +51,7 @@ public class TestBPlusNode {
         // Inner node.
         var innerKeys = new ArrayList<DataBox>();
         var innerChildren = new ArrayList<Integer>();
-        for (int i = 0; i < 2 * d; ++i) {
+        for (int i = 0; i < n - 1; ++i) {
             innerKeys.add(new IntDataBox(i));
             // We use the same page for all children here just for convenience, this should
             // not happen in an actual B+ tree.

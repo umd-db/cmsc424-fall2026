@@ -1,6 +1,6 @@
 # Project 3: B+ Trees
 
-Project deadline: 11:59 PM on November 20, 2025.
+Project deadline: 11:59 PM on November 15, 2026.
 
 This project is to be done by yourself.
 
@@ -54,7 +54,7 @@ This will run `testFromBytes` in the `TestBPlusNode` class.
 
 As the start of the project, `mvn test` will give out a bunch of error messages. This is normal behavior. You should be able to find a line of output that says something along the lines of
 
-> Tests run: 27, Failures: 0, Errors: 25, Skipped: 0
+> Tests run: 29, Failures: 0, Errors: 27, Skipped: 0
 
 Most tests failed because you have not yet implemented the functions they are testing. However, a few tests will pass out of the box.
 
@@ -187,7 +187,9 @@ Implement the `put` and `bulkLoad` methods of `LeafNode` and `InnerNode`. For in
 > [!IMPORTANT]
 > Our implementation of B+ trees does not support duplicate keys. You need to throw a `BPlusTreeException` whenever a duplicate key is inserted.
 > 
-> The order `d` of a B+ Tree is given upon the tree's creation within its metadata field which is passed onto its inner nodes and leaf nodes. Refer to the [things to note section](#things-to-note) for more information.
+> The order `n` of a B+ Tree is given upon the tree's creation within its metadata field which is passed onto its inner nodes and leaf nodes. Refer to the [things to note section](#things-to-note) for more information.
+> 
+> Split nodes exactly as in the lecture slides. When a leaf overflows, the first `ceil(n/2)` entries stay in the left leaf and the rest move to the new right leaf. When an inner node overflows, the first `ceil((n+1)/2)` pointers stay in the left node, the rest move to the new right node, and the key between them moves up. See the comments in `BPlusNode` for examples.
 > 
 > Don't forget to call `sync` when implementing `put`, `remove`, and `bulkLoad`.
 
@@ -198,7 +200,12 @@ Again, all tests prefixed by `testPut` or `testBulkLoad` in `TestInnerNode` and 
 Implement `remove` in `LeafNode` and `InnerNode`.
 
 > [!IMPORTANT]
-> Our implementation of delete does not rebalance the tree. Thus, the rule that all non-root leaf nodes in a B+ tree of order `d` contain between `d` and `2d` entries will not hold for this project. Note that actual B+ trees **do rebalance** after deletion, but we will **not** be implementing rebalancing trees in this project for the sake of simplicity.  This means you also do not need to account for cases where inner nodes may be deleted.
+> Rebalance the tree after deletion exactly as in the lecture slides. `remove` returns `true` when the node it was called on now has too few entries (see the [node size table](#things-to-note)), and the parent then fixes that child using its previous sibling, or its next sibling if the child is the first child:
+>
+> - If the entries of the two nodes fit in a single node, merge the right node into the left node, and remove the key between them and the pointer to the right node from the parent.
+> - Otherwise, move exactly one entry from the sibling into the child, and update the key between them in the parent.
+>
+> The root may have too few entries, but when an inner root is left with a single pointer, its only child becomes the new root. See the comments in `BPlusNode.remove` for the exact rules and an example.
 
 All tests in `TestBPlusNode`, `TestInnerNode`, and `TestLeafNode` should pass at this point. Again, the next set of functionalities depend on methods listed above, so you are recommended to make sure everything is correctly implemented before proceeding.
 
@@ -209,19 +216,25 @@ All tests should pass at this point.
 
 ## Things to Note
 
-This project uses a variable `d` to describe the "order" of a B+ Tree, and `2d` as the number of **values** in a node (this is true both for leaf nodes and internal nodes). In contrast, the textbook we are using for our class uses a variable `n`, which is defined as the number of **pointers** in a node. Every node in a B+ tree--both leaf nodes and internal nodes--have one more pointer than value, so the `n` from your textbook is always equal to `2d + 1`.
+Like the lecture slides and the textbook, this project uses a variable `n` to describe the "order" of a B+ Tree. `n` is the maximum number of **pointers** in a node, so a node holds at most `n - 1` **values** (keys). This is true both for leaf nodes and internal nodes: every node has one more pointer than value. In this project, `n` can be any integer that is at least 3, odd or even.
 
-Therefore, this sentence in the textbook 
+As in the textbook,
 > Each leaf can hold up to n − 1 values. We allow leaf nodes to contain as few as ceiling[ (n−1)/2 ] values.
 
-translates to 
-> Each leaf can hold between d and 2d values, inclusively. 
+For example, a node with `n = 4` has room for 4 pointers and 3 values, and a node with `n = 5` has room for 5 pointers and 4 values:
 
-in this project. For example, here is a node with `n = 5` (or `d = 2`).
+| | Formula | `n = 4` | `n = 5` |
+|---|---|---|---|
+| Max. #pointers | `n` | 4 | 5 |
+| Max. #values | `n - 1` | 3 | 4 |
+| Min. #values (non-root leaf) | `ceil((n-1)/2)` | 2 | 2 |
+| Min. #pointers (non-root inner node) | `ceil(n/2)` | 2 | 3 |
+| Min. #values (root leaf) | `0` | 0 | 0 |
+| Min. #pointers (root inner node) | `2` | 2 | 2 |
 
-<img src="nodes.png" alt="nodes" width="450"/>
+The root is the exception: as a leaf it may hold any number of values from 0 to `n - 1`, and as an inner node it needs only 2 pointers.
 
-Thus, there is no difference between the size constraints of nodes between this project and your textbook. You should be aware of how `d` is defined and how `n` is defined, and how `n = 2d + 1`, for quizzes and exams.
+In the code, `n` is returned by `metadata.getOrder()`.
 
 ## Submitting
 Just submit your `LeafNode.java`, `InnerNode.java`, and `BPlusTree.java` to Gradescope.

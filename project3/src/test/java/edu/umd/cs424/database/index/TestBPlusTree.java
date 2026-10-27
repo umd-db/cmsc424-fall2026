@@ -55,7 +55,7 @@ public class TestBPlusTree {
 
     @Test
     public void testBulkLoad_simple() throws BPlusTreeException {
-        BPlusTree tree = getBPlusTree(Type.intType(), 2);
+        BPlusTree tree = getBPlusTree(Type.intType(), 5);
         float fillFactor = 0.75f;
         assertEquals("()", tree.toSexp(null));
 
@@ -78,7 +78,10 @@ public class TestBPlusTree {
 
     @Test
     public void testWhiteBoxTest() throws BPlusTreeException, IOException {
-        BPlusTree tree = getBPlusTree(Type.intType(), 1);
+        // With n = 3, a node holds at most 2 keys. An overflowing leaf keeps
+        // ceil(3/2) = 2 keys and moves 1 right; an overflowing inner node keeps
+        // ceil(4/2) = 2 pointers, moves 1 key up, and moves the rest right.
+        BPlusTree tree = getBPlusTree(Type.intType(), 3);
         assertEquals("()", tree.toSexp(null));
 
         // (4)
@@ -89,246 +92,199 @@ public class TestBPlusTree {
         tree.put(null, new IntDataBox(9), new RecordId(9, (short) 9));
         assertEquals("((4 (4 4)) (9 (9 9)))", tree.toSexp(null));
 
-        //   (6)
-        //  /   \
-        // (4) (6 9)
+        //    (9)
+        //   /   \
+        // (4 6) (9)
         tree.put(null, new IntDataBox(6), new RecordId(6, (short) 6));
-        String l = "((4 (4 4)))";
-        String r = "((6 (6 6)) (9 (9 9)))";
-        assertEquals(String.format("(%s 6 %s)", l, r), tree.toSexp(null));
+        String l = "((4 (4 4)) (6 (6 6)))";
+        String r = "((9 (9 9)))";
+        assertEquals(String.format("(%s 9 %s)", l, r), tree.toSexp(null));
 
-        //     (6)
-        //    /   \
-        // (2 4) (6 9)
+        //      (6 9)
+        //     /  |  \
+        // (2 4) (6) (9)
         tree.put(null, new IntDataBox(2), new RecordId(2, (short) 2));
         l = "((2 (2 2)) (4 (4 4)))";
-        r = "((6 (6 6)) (9 (9 9)))";
-        assertEquals(String.format("(%s 6 %s)", l, r), tree.toSexp(null));
+        String m = "((6 (6 6)))";
+        r = "((9 (9 9)))";
+        assertEquals(String.format("(%s 6 %s 9 %s)", l, m, r), tree.toSexp(null));
 
-        //      (6 7)
-        //     /  |  \
-        // (2 4) (6) (7 9)
+        //       (6 9)
+        //      /  |  \
+        // (2 4) (6 7) (9)
         tree.put(null, new IntDataBox(7), new RecordId(7, (short) 7));
         l = "((2 (2 2)) (4 (4 4)))";
-        String m = "((6 (6 6)))";
-        r = "((7 (7 7)) (9 (9 9)))";
-        assertEquals(String.format("(%s 6 %s 7 %s)", l, m, r), tree.toSexp(null));
+        m = "((6 (6 6)) (7 (7 7)))";
+        r = "((9 (9 9)))";
+        assertEquals(String.format("(%s 6 %s 9 %s)", l, m, r), tree.toSexp(null));
 
-        //         (7)
-        //        /   \
-        //     (6)     (8)
-        //    /   \   /   \
-        // (2 4) (6) (7) (8 9)
+        //            (8)
+        //           /   \
+        //     (6)          (9)
+        //    /   \        /   \
+        // (2 4) (6 7)   (8)   (9)
         tree.put(null, new IntDataBox(8), new RecordId(8, (short) 8));
         String ll = "((2 (2 2)) (4 (4 4)))";
-        String lr = "((6 (6 6)))";
-        String rl = "((7 (7 7)))";
-        String rr = "((8 (8 8)) (9 (9 9)))";
+        String lr = "((6 (6 6)) (7 (7 7)))";
+        String rl = "((8 (8 8)))";
+        String rr = "((9 (9 9)))";
         l = String.format("(%s 6 %s)", ll, lr);
-        r = String.format("(%s 8 %s)", rl, rr);
-        assertEquals(String.format("(%s 7 %s)", l, r), tree.toSexp(null));
+        r = String.format("(%s 9 %s)", rl, rr);
+        assertEquals(String.format("(%s 8 %s)", l, r), tree.toSexp(null));
 
-        //            (7)
-        //           /   \
-        //     (3 6)       (8)
-        //   /   |   \    /   \
-        // (2) (3 4) (6) (7) (8 9)
+        //               (8)
+        //              /   \
+        //      (4 6)          (9)
+        //    /   |   \       /   \
+        // (2 3) (4) (6 7)  (8)   (9)
         tree.put(null, new IntDataBox(3), new RecordId(3, (short) 3));
-        ll = "((2 (2 2)))";
-        String lm = "((3 (3 3)) (4 (4 4)))";
-        lr = "((6 (6 6)))";
-        rl = "((7 (7 7)))";
-        rr = "((8 (8 8)) (9 (9 9)))";
-        l = String.format("(%s 3 %s 6 %s)", ll, lm, lr);
-        r = String.format("(%s 8 %s)", rl, rr);
-        assertEquals(String.format("(%s 7 %s)", l, r), tree.toSexp(null));
+        ll = "((2 (2 2)) (3 (3 3)))";
+        String lm = "((4 (4 4)))";
+        lr = "((6 (6 6)) (7 (7 7)))";
+        rl = "((8 (8 8)))";
+        rr = "((9 (9 9)))";
+        l = String.format("(%s 4 %s 6 %s)", ll, lm, lr);
+        r = String.format("(%s 9 %s)", rl, rr);
+        assertEquals(String.format("(%s 8 %s)", l, r), tree.toSexp(null));
 
-        //            (4 7)
-        //           /  |  \
-        //   (3)      (6)       (8)
-        //  /   \    /   \    /   \
-        // (2) (3) (4 5) (6) (7) (8 9)
+        //                (8)
+        //               /   \
+        //      (4 6)            (9)
+        //    /   |   \         /   \
+        // (2 3) (4 5) (6 7)  (8)   (9)
         tree.put(null, new IntDataBox(5), new RecordId(5, (short) 5));
-        ll = "((2 (2 2)))";
-        lr = "((3 (3 3)))";
-        String ml = "((4 (4 4)) (5 (5 5)))";
-        String mr = "((6 (6 6)))";
-        rl = "((7 (7 7)))";
-        rr = "((8 (8 8)) (9 (9 9)))";
-        l = String.format("(%s 3 %s)", ll, lr);
-        m = String.format("(%s 6 %s)", ml, mr);
-        r = String.format("(%s 8 %s)", rl, rr);
-        assertEquals(String.format("(%s 4 %s 7 %s)", l, m, r), tree.toSexp(null));
+        ll = "((2 (2 2)) (3 (3 3)))";
+        lm = "((4 (4 4)) (5 (5 5)))";
+        lr = "((6 (6 6)) (7 (7 7)))";
+        rl = "((8 (8 8)))";
+        rr = "((9 (9 9)))";
+        l = String.format("(%s 4 %s 6 %s)", ll, lm, lr);
+        r = String.format("(%s 9 %s)", rl, rr);
+        assertEquals(String.format("(%s 8 %s)", l, r), tree.toSexp(null));
 
-        //            (4 7)
-        //           /  |  \
-        //    (3)      (6)       (8)
-        //   /   \    /   \    /   \
-        // (1 2) (3) (4 5) (6) (7) (8 9)
+        //                (4 8)
+        //             /    |    \
+        //       (3)        (6)         (9)
+        //      /   \      /   \      /   \
+        // (1 2) (3)   (4 5) (6 7) (8)   (9)
         tree.put(null, new IntDataBox(1), new RecordId(1, (short) 1));
         ll = "((1 (1 1)) (2 (2 2)))";
         lr = "((3 (3 3)))";
-        ml = "((4 (4 4)) (5 (5 5)))";
-        mr = "((6 (6 6)))";
-        rl = "((7 (7 7)))";
-        rr = "((8 (8 8)) (9 (9 9)))";
+        String ml = "((4 (4 4)) (5 (5 5)))";
+        String mr = "((6 (6 6)) (7 (7 7)))";
+        rl = "((8 (8 8)))";
+        rr = "((9 (9 9)))";
         l = String.format("(%s 3 %s)", ll, lr);
         m = String.format("(%s 6 %s)", ml, mr);
-        r = String.format("(%s 8 %s)", rl, rr);
-        assertEquals(String.format("(%s 4 %s 7 %s)", l, m, r), tree.toSexp(null));
+        r = String.format("(%s 9 %s)", rl, rr);
+        assertEquals(String.format("(%s 4 %s 8 %s)", l, m, r), tree.toSexp(null));
 
-        //            (4 7)
-        //           /  |  \
-        //    (3)      (6)       (8)
-        //   /   \    /   \    /   \
-        // (  2) (3) (4 5) (6) (7) (8 9)
+        // Now remove keys. In an order 3 tree, a leaf needs at least
+        // ceil(2/2) = 1 key, and a non-root inner node needs at least
+        // ceil(3/2) = 2 pointers.
+
+        //                (4 8)
+        //             /    |    \
+        //       (3)        (6)         (9)
+        //      /   \      /   \      /   \
+        // (2)   (3)   (4 5) (6 7) (8)   (9)
         tree.remove(null, new IntDataBox(1));
         ll = "((2 (2 2)))";
         lr = "((3 (3 3)))";
         ml = "((4 (4 4)) (5 (5 5)))";
-        mr = "((6 (6 6)))";
-        rl = "((7 (7 7)))";
-        rr = "((8 (8 8)) (9 (9 9)))";
+        mr = "((6 (6 6)) (7 (7 7)))";
+        rl = "((8 (8 8)))";
+        rr = "((9 (9 9)))";
         l = String.format("(%s 3 %s)", ll, lr);
         m = String.format("(%s 6 %s)", ml, mr);
-        r = String.format("(%s 8 %s)", rl, rr);
-        assertEquals(String.format("(%s 4 %s 7 %s)", l, m, r), tree.toSexp(null));
+        r = String.format("(%s 9 %s)", rl, rr);
+        assertEquals(String.format("(%s 4 %s 8 %s)", l, m, r), tree.toSexp(null));
 
-        //            (4 7)
-        //           /  |  \
-        //    (3)      (6)       (8)
-        //   /   \    /   \    /   \
-        // (  2) (3) (4 5) (6) (7) (8  )
+        // The leaf (9) becomes empty and merges into the previous leaf (8).
+        // Then (9) is left with 1 pointer and merges into the previous inner
+        // node (6), with 8 pulled down from the root.
+        //
+        //            (4)
+        //          /     \
+        //       (3)        (6 8)
+        //      /   \      /  |  \
+        // (2)   (3)   (4 5) (6 7) (8)
         tree.remove(null, new IntDataBox(9));
         ll = "((2 (2 2)))";
         lr = "((3 (3 3)))";
         ml = "((4 (4 4)) (5 (5 5)))";
-        mr = "((6 (6 6)))";
-        rl = "((7 (7 7)))";
-        rr = "((8 (8 8)))";
+        String mm = "((6 (6 6)) (7 (7 7)))";
+        mr = "((8 (8 8)))";
         l = String.format("(%s 3 %s)", ll, lr);
-        m = String.format("(%s 6 %s)", ml, mr);
-        r = String.format("(%s 8 %s)", rl, rr);
-        assertEquals(String.format("(%s 4 %s 7 %s)", l, m, r), tree.toSexp(null));
+        m = String.format("(%s 6 %s 8 %s)", ml, mm, mr);
+        assertEquals(String.format("(%s 4 %s)", l, m), tree.toSexp(null));
 
-        //            (4 7)
-        //           /  |  \
-        //    (3)      (6)       (8)
-        //   /   \    /   \    /   \
-        // (  2) (3) (4 5) ( ) (7) (8  )
+        // Removing 6 leaves 7 in its leaf, which is enough. The key 6 stays.
+        //
+        //            (4)
+        //          /     \
+        //       (3)        (6 8)
+        //      /   \      /  |  \
+        // (2)   (3)   (4 5) (7) (8)
         tree.remove(null, new IntDataBox(6));
-        ll = "((2 (2 2)))";
-        lr = "((3 (3 3)))";
-        ml = "((4 (4 4)) (5 (5 5)))";
-        mr = "()";
-        rl = "((7 (7 7)))";
-        rr = "((8 (8 8)))";
-        l = String.format("(%s 3 %s)", ll, lr);
-        m = String.format("(%s 6 %s)", ml, mr);
-        r = String.format("(%s 8 %s)", rl, rr);
-        assertEquals(String.format("(%s 4 %s 7 %s)", l, m, r), tree.toSexp(null));
+        mm = "((7 (7 7)))";
+        m = String.format("(%s 6 %s 8 %s)", ml, mm, mr);
+        assertEquals(String.format("(%s 4 %s)", l, m), tree.toSexp(null));
 
-        //            (4 7)
-        //           /  |  \
-        //    (3)      (6)       (8)
-        //   /   \    /   \    /   \
-        // (  2) (3) (  5) ( ) (7) (8  )
+        //            (4)
+        //          /     \
+        //       (3)        (6 8)
+        //      /   \      /  |  \
+        // (2)   (3)   (5)   (7) (8)
         tree.remove(null, new IntDataBox(4));
-        ll = "((2 (2 2)))";
-        lr = "((3 (3 3)))";
         ml = "((5 (5 5)))";
-        mr = "()";
-        rl = "((7 (7 7)))";
-        rr = "((8 (8 8)))";
-        l = String.format("(%s 3 %s)", ll, lr);
-        m = String.format("(%s 6 %s)", ml, mr);
-        r = String.format("(%s 8 %s)", rl, rr);
-        assertEquals(String.format("(%s 4 %s 7 %s)", l, m, r), tree.toSexp(null));
+        m = String.format("(%s 6 %s 8 %s)", ml, mm, mr);
+        assertEquals(String.format("(%s 4 %s)", l, m), tree.toSexp(null));
 
-        //            (4 7)
-        //           /  |  \
-        //    (3)      (6)       (8)
-        //   /   \    /   \    /   \
-        // (   ) (3) (  5) ( ) (7) (8  )
+        // The leaf (2) becomes empty. It is the first child, so the next leaf
+        // (3) merges into it. Then (3) is left with 1 pointer. The next inner
+        // node (6 8) has 3 pointers, which do not fit together with it, so (3)
+        // borrows the first pointer of (6 8), 4 moves down, and 6 moves up.
+        //
+        //            (6)
+        //          /     \
+        //       (4)        (8)
+        //      /   \      /   \
+        // (3)   (5)   (7)   (8)
         tree.remove(null, new IntDataBox(2));
-        ll = "()";
-        lr = "((3 (3 3)))";
-        ml = "((5 (5 5)))";
-        mr = "()";
+        ll = "((3 (3 3)))";
+        lr = "((5 (5 5)))";
         rl = "((7 (7 7)))";
         rr = "((8 (8 8)))";
-        l = String.format("(%s 3 %s)", ll, lr);
-        m = String.format("(%s 6 %s)", ml, mr);
+        l = String.format("(%s 4 %s)", ll, lr);
         r = String.format("(%s 8 %s)", rl, rr);
-        assertEquals(String.format("(%s 4 %s 7 %s)", l, m, r), tree.toSexp(null));
+        assertEquals(String.format("(%s 6 %s)", l, r), tree.toSexp(null));
 
-        //            (4 7)
-        //           /  |  \
-        //    (3)      (6)       (8)
-        //   /   \    /   \    /   \
-        // (   ) (3) (   ) ( ) (7) (8  )
+        // The leaf (5) becomes empty and merges into the previous leaf (3).
+        // Then (4) is left with 1 pointer, and the next inner node (8) merges
+        // into it, with 6 pulled down from the root. The root is left with 1
+        // pointer, so the merged node becomes the new root.
+        //
+        //      (6 8)
+        //     /  |  \
+        // (3)  (7)  (8)
         tree.remove(null, new IntDataBox(5));
-        ll = "()";
-        lr = "((3 (3 3)))";
-        ml = "()";
-        mr = "()";
-        rl = "((7 (7 7)))";
-        rr = "((8 (8 8)))";
-        l = String.format("(%s 3 %s)", ll, lr);
-        m = String.format("(%s 6 %s)", ml, mr);
-        r = String.format("(%s 8 %s)", rl, rr);
-        assertEquals(String.format("(%s 4 %s 7 %s)", l, m, r), tree.toSexp(null));
+        assertEquals(String.format("(%s 6 %s 8 %s)", ll, rl, rr), tree.toSexp(null));
 
-        //            (4 7)
-        //           /  |  \
-        //    (3)      (6)       (8)
-        //   /   \    /   \    /   \
-        // (   ) (3) (   ) ( ) ( ) (8  )
+        //    (8)
+        //   /   \
+        // (3)   (8)
         tree.remove(null, new IntDataBox(7));
-        ll = "()";
-        lr = "((3 (3 3)))";
-        ml = "()";
-        mr = "()";
-        rl = "()";
-        rr = "((8 (8 8)))";
-        l = String.format("(%s 3 %s)", ll, lr);
-        m = String.format("(%s 6 %s)", ml, mr);
-        r = String.format("(%s 8 %s)", rl, rr);
-        assertEquals(String.format("(%s 4 %s 7 %s)", l, m, r), tree.toSexp(null));
+        assertEquals(String.format("(%s 8 %s)", ll, rr), tree.toSexp(null));
 
-        //            (4 7)
-        //           /  |  \
-        //    (3)      (6)       (8)
-        //   /   \    /   \    /   \
-        // (   ) ( ) (   ) ( ) ( ) (8  )
+        // The leaf (3) becomes empty, and the next leaf (8) merges into it. The
+        // root is left with 1 pointer, so that leaf becomes the new root.
         tree.remove(null, new IntDataBox(3));
-        ll = "()";
-        lr = "()";
-        ml = "()";
-        mr = "()";
-        rl = "()";
-        rr = "((8 (8 8)))";
-        l = String.format("(%s 3 %s)", ll, lr);
-        m = String.format("(%s 6 %s)", ml, mr);
-        r = String.format("(%s 8 %s)", rl, rr);
-        assertEquals(String.format("(%s 4 %s 7 %s)", l, m, r), tree.toSexp(null));
+        assertEquals("((8 (8 8)))", tree.toSexp(null));
 
-        //            (4 7)
-        //           /  |  \
-        //    (3)      (6)       (8)
-        //   /   \    /   \    /   \
-        // (   ) ( ) (   ) ( ) ( ) (   )
+        // The root may have too few entries, so an empty root leaf is fine.
         tree.remove(null, new IntDataBox(8));
-        ll = "()";
-        lr = "()";
-        ml = "()";
-        mr = "()";
-        rl = "()";
-        rr = "()";
-        l = String.format("(%s 3 %s)", ll, lr);
-        m = String.format("(%s 6 %s)", ml, mr);
-        r = String.format("(%s 8 %s)", rl, rr);
-        assertEquals(String.format("(%s 4 %s 7 %s)", l, m, r), tree.toSexp(null));
+        assertEquals("()", tree.toSexp(null));
     }
 
     @Timeout(10)
@@ -343,15 +299,15 @@ public class TestBPlusTree {
             sortedRids.add(new RecordId(i, (short) i));
         }
 
-        // Try trees with different orders.
-        for (int d = 2; d < 5; ++d) {
+        // Try trees with different orders, both even and odd.
+        for (int n = 4; n <= 10; n += 3) {
             // Try trees with different insertion orders.
-            for (int n = 0; n < 2; ++n) {
+            for (int trial = 0; trial < 2; ++trial) {
                 Collections.shuffle(keys, new Random(42));
                 Collections.shuffle(rids, new Random(42));
 
                 // Insert all the keys.
-                BPlusTree tree = getBPlusTree(Type.intType(), d);
+                BPlusTree tree = getBPlusTree(Type.intType(), n);
                 for (int i = 0; i < keys.size(); ++i) {
                     tree.put(null, keys.get(i), rids.get(i));
                 }
@@ -371,10 +327,24 @@ public class TestBPlusTree {
                 // Test remove.
                 Collections.shuffle(keys, new Random(42));
                 Collections.shuffle(rids, new Random(42));
-                for (DataBox key : keys) {
-                    fromDisk.remove(null, key);
-                    assertEquals(Optional.empty(), fromDisk.get(null, key));
+                for (int i = 0; i < keys.size(); ++i) {
+                    fromDisk.remove(null, keys.get(i));
+                    assertEquals(Optional.empty(), fromDisk.get(null, keys.get(i)));
+
+                    // Halfway through, the remaining keys are still in order.
+                    if (i == keys.size() / 2) {
+                        var remaining = new ArrayList<RecordId>();
+                        for (RecordId rid : sortedRids) {
+                            if (!rids.subList(0, i + 1).contains(rid)) {
+                                remaining.add(rid);
+                            }
+                        }
+                        assertEquals(remaining, iteratorToList(fromDisk.scanAll(null)));
+                    }
                 }
+
+                // With every key removed, the tree shrinks back to a single empty leaf.
+                assertEquals("()", fromDisk.toSexp(null));
             }
         }
     }
@@ -388,8 +358,8 @@ public class TestBPlusTree {
         assertEquals(6, RecordId.getSizeInBytes());
         int pageSizeInBytes = 100;
         Type keySchema = Type.intType();
-        assertEquals(4, LeafNode.maxOrder(pageSizeInBytes, keySchema));
-        assertEquals(5, InnerNode.maxOrder(pageSizeInBytes, keySchema));
-        assertEquals(4, BPlusTree.maxOrder(pageSizeInBytes, keySchema));
+        assertEquals(10, LeafNode.maxOrder(pageSizeInBytes, keySchema));
+        assertEquals(12, InnerNode.maxOrder(pageSizeInBytes, keySchema));
+        assertEquals(10, BPlusTree.maxOrder(pageSizeInBytes, keySchema));
     }
 }

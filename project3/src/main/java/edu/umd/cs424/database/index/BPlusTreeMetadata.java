@@ -13,11 +13,12 @@ class BPlusTreeMetadata {
     // keys.
     private final Type keySchema;
 
-    // The order of the tree. Given a tree of order d, its inner nodes store
-    // between d and 2d keys and between d+1 and 2d+1 children pointers. Leaf
-    // nodes store between d and 2d (key, record id) pairs. Notable exceptions
-    // include The root node and leaf nodes that have been deleted from; these
-    // may contain fewer than d entries.
+    // The order n of the tree: the maximum number of pointers in a node, as in
+    // the textbook. Given a tree of order n, its inner nodes store between
+    // ceil(n/2) and n children pointers, i.e. between ceil(n/2) - 1 and n - 1
+    // keys. Leaf nodes store between ceil((n-1)/2) and n-1 (key, record id)
+    // pairs. Notable exceptions include the root node and leaf nodes that have
+    // been deleted from; these may contain fewer entries. n must be at least 3.
     private final int order;
 
     public BPlusTreeMetadata(PageAllocator allocator, Type keySchema, int order) {

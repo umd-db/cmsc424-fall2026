@@ -63,7 +63,7 @@ public class TestLeafNode {
     // Tests ///////////////////////////////////////////////////////////////////
     @Test
     public void testGetL() throws IOException {
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), 5);
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), 11);
         LeafNode leaf = getEmptyLeaf(meta, Optional.empty());
         for (int i = 0; i < 10; ++i) {
             assertEquals(leaf, leaf.get(null, new IntDataBox(i)));
@@ -72,7 +72,7 @@ public class TestLeafNode {
 
     @Test
     public void testGetLeftmostLeaf() throws IOException {
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), 5);
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), 11);
         LeafNode leaf = getEmptyLeaf(meta, Optional.empty());
         assertEquals(leaf, leaf.getLeftmostLeaf(null));
     }
@@ -81,13 +81,13 @@ public class TestLeafNode {
     public void testBulkLoad_small() throws BPlusTreeException, IOException {
         // Bulk loads with 60% of a leaf's worth, then checks that the
         // leaf didn't split.
-        int d = 5;
+        int n = 11;
         float fillFactor = 0.8f;
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), d);
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), n);
         LeafNode leaf = getEmptyLeaf(meta, Optional.empty());
 
         var data = new ArrayList<Pair<DataBox, RecordId>>();
-        for (int i = 0; i < (int) Math.ceil(1.5 * d * fillFactor); ++i) {
+        for (int i = 0; i < (int) Math.ceil(0.75 * (n - 1) * fillFactor); ++i) {
             DataBox key = new IntDataBox(i);
             var rid = new RecordId(i, (short) i);
             data.add(i, new Pair<>(key, rid));
@@ -106,11 +106,11 @@ public class TestLeafNode {
 
     @Test
     public void testPut_noOverflow() throws BPlusTreeException, IOException {
-        int d = 5;
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), d);
+        int n = 11;
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), n);
         LeafNode leaf = getEmptyLeaf(meta, Optional.empty());
 
-        for (int i = 0; i < 2 * d; ++i) {
+        for (int i = 0; i < n - 1; ++i) {
             DataBox key = new IntDataBox(i);
             var rid = new RecordId(i, (short) i);
             assertEquals(Optional.empty(), leaf.put(null, key, rid));
@@ -126,12 +126,12 @@ public class TestLeafNode {
     @Test
     public void testPut_noOverflowFromDisk()
     throws BPlusTreeException, IOException {
-        int d = 5;
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), d);
+        int n = 11;
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), n);
         LeafNode leaf = getEmptyLeaf(meta, Optional.empty());
 
         // Populate the leaf.
-        for (int i = 0; i < 2 * d; ++i) {
+        for (int i = 0; i < n - 1; ++i) {
             leaf.put(null, new IntDataBox(i), new RecordId(i, (short) i));
         }
 
@@ -140,7 +140,7 @@ public class TestLeafNode {
         LeafNode fromDisk = LeafNode.fromBytes(null, meta, pageNum);
 
         // Check to see that we can read from disk.
-        for (int i = 0; i < 2 * d; ++i) {
+        for (int i = 0; i < n - 1; ++i) {
             var key = new IntDataBox(i);
             var rid = new RecordId(i, (short) i);
             assertEquals(Optional.of(rid), fromDisk.getKey(key));
@@ -149,7 +149,7 @@ public class TestLeafNode {
 
     @Test
     public void testPut_duplicate() throws BPlusTreeException, IOException {
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), 4);
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), 9);
         LeafNode leaf = getEmptyLeaf(meta, Optional.empty());
 
         // The initial insert is fine.
@@ -162,40 +162,45 @@ public class TestLeafNode {
 
     @Test
     public void testRemove_simple() throws BPlusTreeException, IOException {
-        int d = 5;
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), d);
+        int n = 11;
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), n);
         LeafNode leaf = getEmptyLeaf(meta, Optional.empty());
 
         // Insert entries.
-        for (int i = 0; i < 2 * d; ++i) {
+        for (int i = 0; i < n - 1; ++i) {
             var key = new IntDataBox(i);
             var rid = new RecordId(i, (short) i);
             leaf.put(null, key, rid);
             assertEquals(Optional.of(rid), leaf.getKey(key));
         }
 
-        // Remove entries.
-        for (int i = 0; i < 2 * d; ++i) {
+        // Remove entries. A leaf has too few entries once it holds fewer than
+        // ceil((n-1)/2) = 5 keys.
+        for (int i = 0; i < n - 1; ++i) {
             var key = new IntDataBox(i);
-            leaf.remove(null, key);
+            int remaining = n - 2 - i;
+            assertEquals(remaining < 5, leaf.remove(null, key));
             assertEquals(Optional.empty(), leaf.getKey(key));
         }
+
+        // Removing a key that is not there does nothing.
+        assertFalse(leaf.remove(null, new IntDataBox(0)));
     }
 
     @Test
     public void testScanAll() throws BPlusTreeException, IOException {
-        int d = 5;
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), d);
+        int n = 11;
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), n);
         LeafNode leaf = getEmptyLeaf(meta, Optional.empty());
 
         // Insert tuples in reverse order to make sure that scanAll is returning
         // things in sorted order.
-        for (int i = 2 * d - 1; i >= 0; --i) {
+        for (int i = n - 2; i >= 0; --i) {
             leaf.put(null, new IntDataBox(i), new RecordId(i, (short) i));
         }
 
         Iterator<RecordId> iter = leaf.scanAll();
-        for (int i = 0; i < 2 * d; ++i) {
+        for (int i = 0; i < n - 1; ++i) {
             assertTrue(iter.hasNext());
             assertEquals(new RecordId(i, (short) i), iter.next());
         }
@@ -209,18 +214,17 @@ public class TestLeafNode {
         // unless you read toBytes.
         assertEquals(4, Type.intType().getSizeInBytes());
         assertEquals(6, RecordId.getSizeInBytes());
-        for (int d = 0; d < 10; ++d) {
-            int dd = d + 1;
-            for (int i = 9 + (2 * d) * (4 + 6); i < 9 + (2 * dd) * (4 + 6); ++i) {
-                assertEquals(d, LeafNode.maxOrder(i, Type.intType()));
+        for (int n = 1; n < 21; ++n) {
+            for (int i = 9 + (n - 1) * (4 + 6); i < 9 + n * (4 + 6); ++i) {
+                assertEquals(n, LeafNode.maxOrder(i, Type.intType()));
             }
         }
     }
 
     @Test
     public void testToSexp() throws BPlusTreeException, IOException {
-        int d = 2;
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), d);
+        int n = 5;
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), n);
         LeafNode leaf = getEmptyLeaf(meta, Optional.empty());
 
         assertEquals("()", leaf.toSexp(null));
@@ -236,8 +240,8 @@ public class TestLeafNode {
 
     @Test
     public void testToAndFromBytes() throws BPlusTreeException, IOException {
-        int d = 5;
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), d);
+        int n = 11;
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), n);
 
         var keys = new ArrayList<DataBox>();
         var rids = new ArrayList<RecordId>();
@@ -246,7 +250,7 @@ public class TestLeafNode {
 
         assertEquals(leaf, LeafNode.fromBytes(null, meta, pageNum));
 
-        for (int i = 0; i < 2 * d; ++i) {
+        for (int i = 0; i < n - 1; ++i) {
             leaf.put(null, new IntDataBox(i), new RecordId(i, (short) i));
             assertEquals(leaf, LeafNode.fromBytes(null, meta, pageNum));
         }
@@ -254,8 +258,8 @@ public class TestLeafNode {
 
     @Test
     public void testByteSequence() throws IOException {
-        int d = 5;
-        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), d);
+        int n = 11;
+        BPlusTreeMetadata meta = getBPlusTreeMetadata(Type.intType(), n);
 
         // Create keys
         var keys = new ArrayList<DataBox>();

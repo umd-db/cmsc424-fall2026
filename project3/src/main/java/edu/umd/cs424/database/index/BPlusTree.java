@@ -19,8 +19,8 @@ import edu.umd.cs424.database.table.RecordId;
 /**
  * A persistent B+ tree.
  *
- * // Create an order 2, integer-valued B+ tree that is persisted in tree.txt.
- * var tree = new BPlusTree("tree.txt", Type.intType(), 2, transaction);
+ * // Create an order 5, integer-valued B+ tree that is persisted in tree.txt.
+ * var tree = new BPlusTree("tree.txt", Type.intType(), 5, transaction);
  *
  * // Insert some values into the tree.
  * tree.put(new IntDataBox(0), new RecordId(0, (short) 0));
@@ -63,10 +63,11 @@ public class BPlusTree implements Closeable {
 	// Constructors ////////////////////////////////////////////////////////////
 	/**
 	 * Construct a new B+ tree which is serialized into the file `filename`, stores
-	 * keys of type `keySchema`, and has order `order`. For example, `new
-	 * BPlusTree("tree.txt", Type.intType(), 2)` constructs a B+ tree that is
-	 * serialized to "tree.txt", that maps integers to record ids, and that has
-	 * order 2.
+	 * keys of type `keySchema`, and has order `order`. The order n is the maximum
+	 * number of pointers in a node (so a node holds at most n-1 keys), and it must
+	 * be at least 3. For example, `new BPlusTree("tree.txt",
+	 * Type.intType(), 5)` constructs a B+ tree that is serialized to "tree.txt",
+	 * that maps integers to record ids, and that has order 5.
 	 *
 	 * If the specified order is so large that a single node cannot fit on a single
 	 * page, then a BPlusTree exception is thrown. If you want to have maximally
@@ -85,8 +86,8 @@ public class BPlusTree implements Closeable {
 	public BPlusTree(String filename, Type keySchema, int order, LockContext lockContext, BaseTransaction transaction)
 			throws BPlusTreeException {
 		// Sanity checks.
-		if (order < 0) {
-			String msg = String.format("You cannot construct a B+ tree with negative order %d.", order);
+		if (order < 3) {
+			String msg = String.format("You cannot construct a B+ tree with order %d; the order must be at least 3.", order);
 			throw new BPlusTreeException(msg);
 		}
 
@@ -149,7 +150,7 @@ public class BPlusTree implements Closeable {
 	 * Returns the value associated with `key`.
 	 *
 	 * // Create a B+ tree and insert a single value into it.
-	 * var tree = new BPlusTree("t.txt", Type.intType(), 4);
+	 * var tree = new BPlusTree("t.txt", Type.intType(), 9);
 	 * DataBox key = new IntDataBox(42);
 	 * var rid = new RecordId(0, (short) 0);
 	 * tree.put(key, rid);
@@ -185,7 +186,7 @@ public class BPlusTree implements Closeable {
 	 * order of their corresponding keys.
 	 *
 	 * // Create a B+ tree and insert some values into it.
-	 * var tree = new BPlusTree("t.txt", Type.intType(), 4);
+	 * var tree = new BPlusTree("t.txt", Type.intType(), 9);
 	 * tree.put(new IntDataBox(2), new RecordId(2, (short) 2));
 	 * tree.put(new IntDataBox(5), new RecordId(5, (short) 5));
 	 * tree.put(new IntDataBox(4), new RecordId(4, (short) 4));
@@ -211,7 +212,7 @@ public class BPlusTree implements Closeable {
 	 * corresponding keys.
 	 *
 	 * // Create a B+ tree and insert some values into it.
-	 * var tree = new BPlusTree("t.txt", Type.intType(), 4);
+	 * var tree = new BPlusTree("t.txt", Type.intType(), 9);
 	 * tree.put(new IntDataBox(2), new RecordId(2, (short) 2));
 	 * tree.put(new IntDataBox(5), new RecordId(5, (short) 5));
 	 * tree.put(new IntDataBox(4), new RecordId(4, (short) 4));
@@ -240,7 +241,7 @@ public class BPlusTree implements Closeable {
 	 * Inserts a (key, rid) pair into a B+ tree. If the key already exists in the B+
 	 * tree, then the pair is not inserted and an exception is raised.
 	 *
-	 * var tree = new BPlusTree("t.txt", Type.intType(), 4);
+	 * var tree = new BPlusTree("t.txt", Type.intType(), 9);
 	 * DataBox key = new IntDataBox(42);
 	 * var rid = new RecordId(42, (short) 42);
 	 * tree.put(key, rid); // Sucess :)
@@ -273,7 +274,7 @@ public class BPlusTree implements Closeable {
 	/**
 	 * Deletes a (key, rid) pair from a B+ tree.
 	 *
-	 * var tree = new BPlusTree("t.txt", Type.intType(), 4);
+	 * var tree = new BPlusTree("t.txt", Type.intType(), 9);
 	 * DataBox key = new IntDataBox(42);
 	 * var rid = new RecordId(42, (short) 42);
 	 *
@@ -281,6 +282,12 @@ public class BPlusTree implements Closeable {
 	 * tree.get(key); // Optional.of(rid)
 	 * tree.remove(key);
 	 * tree.get(key); // Optional.empty()
+	 *
+	 * The tree is rebalanced as described in BPlusNode.remove. The root is allowed
+	 * to have too few entries, so ignore what root.remove returns. However, if the
+	 * root is an inner node that is left with only one pointer, its only child
+	 * becomes the new root. Don't forget to update the header page when the root
+	 * changes (see writeHeader).
 	 */
 	public void remove(BaseTransaction transaction, DataBox key) {
 		throw new UnsupportedOperationException("Implement this.");
@@ -345,8 +352,8 @@ public class BPlusTree implements Closeable {
 	}
 
 	/**
-	 * Returns the largest number d such that the serialization of a LeafNode with
-	 * 2d entries and an InnerNode with 2d keys will fit on a single page of size
+	 * Returns the largest order n such that the serialization of a LeafNode with
+	 * n-1 entries and an InnerNode with n-1 keys will fit on a single page of size
 	 * `pageSizeInBytes`.
 	 */
 	public static int maxOrder(int pageSizeInBytes, Type keySchema) {
