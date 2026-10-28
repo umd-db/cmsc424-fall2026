@@ -1,6 +1,6 @@
 # Project 3: B+ Trees
 
-Project deadline: 11:59 PM on November 15, 2026.
+Project deadline: 11:59 PM on November 11, 2026.
 
 This project is to be done by yourself.
 
