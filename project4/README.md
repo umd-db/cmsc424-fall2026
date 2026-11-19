@@ -16,7 +16,16 @@ We will be using the same environment as the previous project.
 Like project3, we recommend you install/use an IDE. Here are some popular options:
 1. [IntelliJ](https://www.jetbrains.com/idea/download) (download the community edition). Open the project4 folder and choose "maven project" when prompted. You may also see a "JDK is not defined" warning when opening a file. Click "Setup JDK" and "Download JDK" to set the project up. IntelliJ is known to be slow during startup, so it may take a while for it to finish initializing.
 2. [Eclipse](https://www.eclipse.org/downloads/). In Eclipse, import this project with: File > import > maven > existing maven project.
-3. An editor of your choice such as VS Code. Note that you may need to manually [install OpenJDK](https://adoptium.net/temurin/releases/), [download maven](https://maven.apache.org/download.cgi), and [install maven](https://maven.apache.org/install.html) in order to run the project locally. TAs may only be able to provide limited assistance if you choose this route since the setup process varies by person and by editor.
+3. An editor of your choice such as VS Code. Note that you may need to manually [install OpenJDK](https://adoptium.net/temurin/releases/), [download maven](https://maven.apache.org/download.cgi), and [install maven](https://maven.apache.org/install.html) in order to run the project locally. Alternatively, you can skip installing Maven and use the included Maven wrapper, which downloads Maven 3.9.9 for you. Run the following commands from the `project4` directory. TAs may only be able to provide limited assistance if you choose this route since the setup process varies by person and by editor.
+
+With a JDK installed, use the wrapper on Mac/Linux:
+
+```bash
+./mvnw compile
+./mvnw test
+```
+
+On Windows, use `mvnw.cmd compile` and `mvnw.cmd test`. Wherever the instructions say `mvn`, you can use `./mvnw` (Mac/Linux) or `mvnw.cmd` (Windows) instead.
 
 Alternatively, you can run the project within a Docker environment, which can be started with the following command. Make sure that the current directory is the directory of the project:
 
