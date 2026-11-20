@@ -1,7 +1,7 @@
 # Project 4: Implementing Join Algorithms
 
 
-### Due Date: TBD
+### Due Date: December 8, 2026
 
 *The assignment is to be done by yourself.*
 
